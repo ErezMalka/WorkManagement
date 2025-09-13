@@ -9,12 +9,14 @@ export default function HomePage() {
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [clockStatus, setClockStatus] = useState<'clocked_in' | 'clocked_out'>('clocked_out')
+  const [todayLog, setTodayLog] = useState<any>(null)
+  const [clockTime, setClockTime] = useState<Date | null>(null)
   const router = useRouter()
 
   useEffect(() => {
     checkUser()
     
-    // הוסף listener לשינויים ב-auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       if (session?.user) {
         checkUser()
@@ -24,7 +26,15 @@ export default function HomePage() {
       }
     })
 
-    return () => subscription.unsubscribe()
+    // עדכן שעון כל שנייה
+    const interval = setInterval(() => {
+      setClockTime(new Date())
+    }, 1000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearInterval(interval)
+    }
   }, [])
 
   const checkUser = async () => {
@@ -34,7 +44,6 @@ export default function HomePage() {
       if (user) {
         setUser(user)
         
-        // Get user profile
         const { data: profileData } = await supabase
           .from('profiles')
           .select('*')
@@ -42,11 +51,81 @@ export default function HomePage() {
           .single()
 
         setProfile(profileData)
+        
+        // בדוק סטטוס נוכחות להיום
+        await checkAttendanceStatus(user.id)
       }
     } catch (error) {
       console.error('Error:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const checkAttendanceStatus = async (userId: string) => {
+    const today = new Date().toISOString().split('T')[0]
+    
+    const { data } = await supabase
+      .from('attendance_logs')
+      .select('*')
+      .eq('employee_id', userId)
+      .eq('date', today)
+      .single()
+    
+    if (data) {
+      setTodayLog(data)
+      setClockStatus(data.status)
+    }
+  }
+
+  const handleClockIn = async () => {
+    if (!user) return
+    
+    const now = new Date()
+    const today = now.toISOString().split('T')[0]
+    
+    const { data, error } = await supabase
+      .from('attendance_logs')
+      .upsert({
+        employee_id: user.id,
+        date: today,
+        clock_in: now.toISOString(),
+        status: 'clocked_in'
+      }, {
+        onConflict: 'employee_id,date'
+      })
+      .select()
+      .single()
+    
+    if (!error && data) {
+      setTodayLog(data)
+      setClockStatus('clocked_in')
+      alert('כניסה נרשמה בהצלחה!')
+    }
+  }
+
+  const handleClockOut = async () => {
+    if (!user || !todayLog) return
+    
+    const now = new Date()
+    const clockIn = new Date(todayLog.clock_in)
+    const totalHours = (now.getTime() - clockIn.getTime()) / (1000 * 60 * 60)
+    
+    const { data, error } = await supabase
+      .from('attendance_logs')
+      .update({
+        clock_out: now.toISOString(),
+        status: 'clocked_out',
+        total_hours: Math.round(totalHours * 100) / 100
+      })
+      .eq('id', todayLog.id)
+      .select()
+      .single()
+    
+    if (!error && data) {
+      setTodayLog(data)
+      setClockStatus('clocked_out')
+      alert(`יציאה נרשמה בהצלחה! סה"כ ${Math.round(totalHours * 100) / 100} שעות`)
     }
   }
 
@@ -65,7 +144,6 @@ export default function HomePage() {
     )
   }
 
-  // אם לא מחובר - הצג דף כניסה
   if (!user) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -88,7 +166,6 @@ export default function HomePage() {
     )
   }
 
-  // אם מחובר - הצג את הדף הראשי
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow-sm border-b">
@@ -109,6 +186,58 @@ export default function HomePage() {
           </div>
         </div>
       </nav>
+
+      {/* אזור שעון נוכחות */}
+      <div className="bg-white shadow-md">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-3xl font-bold">
+                {clockTime?.toLocaleTimeString('he-IL')}
+              </div>
+              <div className="text-gray-600">
+                {clockTime?.toLocaleDateString('he-IL', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </div>
+              {todayLog?.clock_in && (
+                <div className="text-sm text-gray-500 mt-1">
+                  שעת כניסה: {new Date(todayLog.clock_in).toLocaleTimeString('he-IL')}
+                </div>
+              )}
+            </div>
+            
+            <div className="flex gap-4">
+              {clockStatus === 'clocked_out' ? (
+                <button
+                  onClick={handleClockIn}
+                  className="px-8 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-lg font-semibold"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  כניסה
+                </button>
+              ) : (
+                <button
+                  onClick={handleClockOut}
+                  className="px-8 py-4 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2 text-lg font-semibold"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10h6v4H9z" />
+                  </svg>
+                  יציאה
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="container mx-auto px-4 py-8">
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -156,25 +285,6 @@ export default function HomePage() {
                 <div className="border rounded-lg p-6 bg-blue-50 hover:shadow-md transition-shadow">
                   <h3 className="text-xl font-bold mb-2">אישורים</h3>
                   <p className="text-gray-600">אשר שעות וחופשות</p>
-                </div>
-              </Link>
-            </>
-          )}
-
-          {/* כרטיסים לאדמין בלבד */}
-          {profile?.role === 'admin' && (
-            <>
-              <Link href="/admin/settings" className="block">
-                <div className="border rounded-lg p-6 bg-purple-50 hover:shadow-md transition-shadow">
-                  <h3 className="text-xl font-bold mb-2">הגדרות מערכת</h3>
-                  <p className="text-gray-600">נהל הגדרות גלובליות</p>
-                </div>
-              </Link>
-
-              <Link href="/admin/reports" className="block">
-                <div className="border rounded-lg p-6 bg-purple-50 hover:shadow-md transition-shadow">
-                  <h3 className="text-xl font-bold mb-2">דוחות מתקדמים</h3>
-                  <p className="text-gray-600">דוחות וניתוחים</p>
                 </div>
               </Link>
             </>
