@@ -1,102 +1,147 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase/client'
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+export default function HomePage() {
+  const [user, setUser] = useState<any>(null)
+  const [profile, setProfile] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
+  useEffect(() => {
+    checkUser()
+  }, [])
 
+  const checkUser = async () => {
     try {
-      // כאן תוסיף את הלוגיקה של Supabase
-      console.log('Login attempt:', { email, password })
+      const { data: { user } } = await supabase.auth.getUser()
       
-      // זמני - מעבר לדף הבית
-      setTimeout(() => {
-        router.push('/')
-      }, 1000)
-    } catch (err) {
-      setError('שגיאה בהתחברות')
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
+      setUser(user)
+
+      // Get user profile
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single()
+
+      setProfile(profileData)
+    } catch (error) {
+      console.error('Error:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
-        <div>
-          <h2 className="text-center text-3xl font-bold">כניסה למערכת</h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            הזן את פרטי ההתחברות שלך
-          </p>
-        </div>
-        
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div className="bg-red-50 text-red-500 p-3 rounded text-sm">
-              {error}
-            </div>
-          )}
-          
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                כתובת אימייל
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="admin@company.com"
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                סיסמה
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
 
-          <div>
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-xl">טוען...</div>
+      </div>
+    )
+  }
+
+  if (!user || !profile) {
+    return null
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <nav className="bg-white shadow-sm border-b">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-xl font-bold">מערכת ניהול שעות ושכר</h1>
+              <p className="text-sm text-gray-600">
+                שלום, {profile.full_name} ({profile.role})
+              </p>
+            </div>
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              onClick={handleLogout}
+              className="px-4 py-2 text-red-600 hover:bg-red-50 rounded"
             >
-              {loading ? 'מתחבר...' : 'כניסה'}
+              יציאה
             </button>
           </div>
+        </div>
+      </nav>
 
-          <div className="text-center text-sm">
-            <Link href="/register" className="text-blue-600 hover:text-blue-500">
-              אין לך חשבון? הירשם כאן
-            </Link>
-          </div>
-        </form>
+      <div className="container mx-auto px-4 py-8">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          
+          {/* כרטיסים לכולם */}
+          <Link href="/employee/timesheets" className="block">
+            <div className="border rounded-lg p-6 bg-white hover:shadow-md transition-shadow">
+              <h3 className="text-xl font-bold mb-2">דיווח שעות</h3>
+              <p className="text-gray-600">דווח את שעות העבודה שלך</p>
+            </div>
+          </Link>
+
+          <Link href="/employee/leave" className="block">
+            <div className="border rounded-lg p-6 bg-white hover:shadow-md transition-shadow">
+              <h3 className="text-xl font-bold mb-2">חופשות</h3>
+              <p className="text-gray-600">בקש חופשה וצפה ביתרות</p>
+            </div>
+          </Link>
+
+          <Link href="/employee/payslips" className="block">
+            <div className="border rounded-lg p-6 bg-white hover:shadow-md transition-shadow">
+              <h3 className="text-xl font-bold mb-2">תלושי שכר</h3>
+              <p className="text-gray-600">צפה והורד תלושים</p>
+            </div>
+          </Link>
+
+          {/* כרטיסים למנהלים ומעלה */}
+          {(profile.role === 'manager' || profile.role === 'admin') && (
+            <>
+              <Link href="/manager/employees" className="block">
+                <div className="border rounded-lg p-6 bg-blue-50 hover:shadow-md transition-shadow">
+                  <h3 className="text-xl font-bold mb-2">ניהול עובדים</h3>
+                  <p className="text-gray-600">הוסף וערוך עובדים</p>
+                </div>
+              </Link>
+
+              <Link href="/manager/approvals" className="block">
+                <div className="border rounded-lg p-6 bg-blue-50 hover:shadow-md transition-shadow">
+                  <h3 className="text-xl font-bold mb-2">אישורים</h3>
+                  <p className="text-gray-600">אשר שעות וחופשות</p>
+                </div>
+              </Link>
+            </>
+          )}
+
+          {/* כרטיסים לאדמין בלבד */}
+          {profile.role === 'admin' && (
+            <>
+              <Link href="/admin/settings" className="block">
+                <div className="border rounded-lg p-6 bg-purple-50 hover:shadow-md transition-shadow">
+                  <h3 className="text-xl font-bold mb-2">הגדרות מערכת</h3>
+                  <p className="text-gray-600">נהל הגדרות גלובליות</p>
+                </div>
+              </Link>
+
+              <Link href="/admin/reports" className="block">
+                <div className="border rounded-lg p-6 bg-purple-50 hover:shadow-md transition-shadow">
+                  <h3 className="text-xl font-bold mb-2">דוחות</h3>
+                  <p className="text-gray-600">דוחות מתקדמים</p>
+                </div>
+              </Link>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
