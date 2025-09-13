@@ -45,7 +45,7 @@ export default function ReportsPage() {
         monthlyData: [] as any[]
       }
 
-      timesheetsData.forEach(timesheet => {
+      timesheetsData.forEach((timesheet: any) => {
         const monthTotal = timesheet.time_entries?.reduce((sum: number, entry: any) => 
           sum + (entry.regular_hours || 0), 0) || 0
         
@@ -139,7 +139,7 @@ export default function ReportsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {timesheets.map((timesheet) => {
+              {timesheets.map((timesheet: any) => {
                 const totalHours = timesheet.time_entries?.reduce((sum: number, entry: any) => 
                   sum + (entry.regular_hours || 0), 0) || 0
                 const totalOT = timesheet.time_entries?.reduce((sum: number, entry: any) => 
